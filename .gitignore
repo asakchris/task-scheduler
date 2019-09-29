@@ -1,11 +1,18 @@
 # Compiled class file
 *.class
 
+# Maven target folder
+target
+
 # Log file
 *.log
 
 # BlueJ files
 *.ctxt
+
+# Intellij
+*.iml
+.idea
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
