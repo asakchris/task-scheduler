@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This stack creates ECS cluster to deploy spring boot task scheduler
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC in which Fargate container tasks run
+  PrivateSubnetList:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select at least two private subnets in given VPC where Fargate run tasks
+Resources:
+  # This is an IAM role which authorizes ECS to manage resources on the account, such as updating load balancer
+  # with details of where containers are, so that traffic can reach containers.
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ECS-ROLE
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ECSRolePolicy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Rules which allow ECS to attach network interfaces to instances in order
+              # for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules which allow ECS to update load balancers with the information about
+              # how to send traffic to containers
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+
+              - 'ec2:Describe*'
+              - 'ec2:AuthorizeSecurityGroupIngress'
+            Resource: '*'
+
+  # This is a role which is used by the ECS tasks themselves.
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ECS-TASK-EXEC-ROLE
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ECSTaskExecutionRolePolicy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Allow the ECS Tasks to download images from ECR
+              - 'ecr:GetAuthorizationToken'
+              - 'ecr:BatchCheckLayerAvailability'
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchGetImage'
+
+              # Allow the ECS tasks to upload logs to CloudWatch
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource: '*'
+
+  # IAM role to give the service's containers if the code within needs to access other AWS resources
+  # like ECS tasks, S3 buckets etc
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ECS-TASK-ROLE
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: 'Allow'
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Policies:
+      - PolicyName: ECSServiceDiscovery
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Allow ECS container to access ECS tasks
+              - 'ecs:ListTasks'
+              - 'ecs:DescribeTasks'
+            Resource: '*'
+
+  # Service Discovery POC ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: TASK-SCHEDULER-ECS-CLUSTER
+
+  # Cloud watch log group to send logs
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ECS/task-scheduler'
+      RetentionInDays: 7
+
+  # Metadata description of what message container to run and what resource requirements it has
+  SchedulerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: SCHEDULER-TD
+      Cpu: 512
+      Memory: 1024
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+      - Name: SCHEDULER-CONTAINER
+        Cpu: 512
+        Memory: 1024
+        Image: 'asakchris/task-scheduler:1.0-SNAPSHOT'
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref LogGroup
+            awslogs-region: !Ref AWS::Region
+            awslogs-stream-prefix: ecs
+  # Service is a resource which allows to run multiple copies of a type of task, and gather up their logs and metrics,
+  # as well as monitor the number of running tasks and replace any that have crashed
+  SchedulerECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: SCHEDULER-SERVICE
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      DesiredCount: 2
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Ref PrivateSubnetList
+      TaskDefinition: !Ref SchedulerTaskDefinition
