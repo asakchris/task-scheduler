@@ -3,4 +3,4 @@ services:
   task-scheduler:
     image: asakchris/task-scheduler:1.0-SNAPSHOT
     environment:
-      - JAVA_OPTS: "-Dapp.task.name=MyTask"
+      - JAVA_OPTS=-Dapp.task.name=MyTestTask
