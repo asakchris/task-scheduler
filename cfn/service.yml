@@ -146,9 +146,9 @@ Resources:
       Cluster: !Ref ECSCluster
       LaunchType: FARGATE
       DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 75
-      DesiredCount: 2
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DesiredCount: 1
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
