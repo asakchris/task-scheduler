@@ -1,12 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: This stack creates ECS cluster to deploy spring boot task scheduler
 Parameters:
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: The VPC in which Fargate container tasks run
-  PrivateSubnetList:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Select at least two private subnets in given VPC where Fargate run tasks
+  VpcStackName:
+    Type: String
+    Description: Name of the stack which is used to create VPC and Subnets
+  Platform:
+    Type: String
+    Default: 'TEST'
+    Description: Platform Name
 Resources:
   # This is an IAM role which authorizes ECS to manage resources on the account, such as updating load balancer
   # with details of where containers are, so that traffic can reach containers.
@@ -155,5 +156,7 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
-          Subnets: !Ref PrivateSubnetList
+          Subnets:
+            - Fn::ImportValue: !Join [':', [!Ref 'VpcStackName', 'PrivateSubnetOne']]
+            - Fn::ImportValue: !Join [':', [!Ref 'VpcStackName', 'PrivateSubnetTwo']]
       TaskDefinition: !Ref SchedulerTaskDefinition
