@@ -20,7 +20,7 @@ public class ApplicationIntegrationTest {
     @SpyBean
     private ScheduledTasks scheduledTasks;
 
-    @Test
+    //@Test
     public void whenWaitOneSecond_thenScheduledIsCalledAtLeastTenTimes() {
         await()
                 .atMost(Duration.ofSeconds(12))
